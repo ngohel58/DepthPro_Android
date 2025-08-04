@@ -1,0 +1,69 @@
+workflows:
+  depthpro-debug:
+    name: DepthPro Android Debug Build
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      vars:
+        PACKAGE_NAME: "com.depthpro.android" # Update this to match your actual package name
+      java: 17
+      android_signing:
+        # No signing configuration needed for debug builds
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: '15yioi-codex/add-chromostereopsis-effect-functionality'
+          include: true
+          source: true
+        - pattern: 'main'
+          include: true
+          source: true
+        - pattern: 'develop'
+          include: true
+          source: true
+    scripts:
+      - name: Set up local.properties
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+          
+      - name: Set Android SDK permissions
+        script: |
+          set -e
+          set -x
+          chmod +x ./gradlew
+          
+      - name: Get dependencies
+        script: |
+          ./gradlew dependencies
+          
+      - name: Build debug APK
+        script: |
+          set -e
+          set -x
+          ./gradlew assembleDebug --stacktrace
+          
+      - name: Run unit tests (optional)
+        script: |
+          ./gradlew test --continue || true
+        test_report: app/build/test-results/**/*.xml
+        
+      - name: List generated files
+        script: |
+          find app/build/outputs -name "*.apk" -type f
+          ls -la app/build/outputs/apk/debug/
+          
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk
+      - app/build/outputs/apk/debug/output-metadata.json
+      - app/build/reports/**/*
+      - app/build/test-results/**/*.xml
+      
+    publishing:
+      email:
+        recipients:
+          - ngohel58@example.com # Update with your email
+        notify:
+          success: true
+          failure: true
