@@ -1,69 +1,44 @@
-workflows:
-  depthpro-debug:
-    name: DepthPro Android Debug Build
+depthpro-manual-debug:
+    name: DepthPro Manual Debug Build
     max_build_duration: 60
     instance_type: linux_x2
+    when:
+      changeset:
+        includes:
+          - '.'
+        excludes:
+          - '**/*.md'
+          - '**/README*'
     environment:
-      vars:
-        PACKAGE_NAME: "com.depthpro.android" # Update this to match your actual package name
       java: 17
-      android_signing:
-        # No signing configuration needed for debug builds
-    triggering:
-      events:
-        - push
-        - pull_request
-      branch_patterns:
-        - pattern: '15yioi-codex/add-chromostereopsis-effect-functionality'
-          include: true
-          source: true
-        - pattern: 'main'
-          include: true
-          source: true
-        - pattern: 'develop'
-          include: true
-          source: true
     scripts:
       - name: Set up local.properties
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
           
-      - name: Set Android SDK permissions
+      - name: Clean project
         script: |
-          set -e
-          set -x
           chmod +x ./gradlew
+          ./gradlew clean
           
-      - name: Get dependencies
+      - name: Build unsigned debug APK
         script: |
-          ./gradlew dependencies
+          ./gradlew assembleDebug --no-daemon --stacktrace --info
           
-      - name: Build debug APK
+      - name: Verify APK generation
         script: |
-          set -e
-          set -x
-          ./gradlew assembleDebug --stacktrace
-          
-      - name: Run unit tests (optional)
-        script: |
-          ./gradlew test --continue || true
-        test_report: app/build/test-results/**/*.xml
-        
-      - name: List generated files
-        script: |
-          find app/build/outputs -name "*.apk" -type f
-          ls -la app/build/outputs/apk/debug/
+          if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "✅ app-debug.apk generated successfully"
+            ls -lh app/build/outputs/apk/debug/app-debug.apk
+            file app/build/outputs/apk/debug/app-debug.apk
+          else
+            echo "❌ app-debug.apk not found"
+            find . -name "*.apk" -type f || echo "No APK files found"
+            exit 1
+          fi
           
     artifacts:
-      - app/build/outputs/apk/debug/*.apk
+      - app/build/outputs/apk/debug/app-debug.apk
       - app/build/outputs/apk/debug/output-metadata.json
-      - app/build/reports/**/*
-      - app/build/test-results/**/*.xml
-      
-    publishing:
-      email:
-        recipients:
-          - ngohel58@example.com # Update with your email
-        notify:
-          success: true
-          failure: true
+      - app/build/outputs/logs/manifest-merger-debug-report.txt
+    
