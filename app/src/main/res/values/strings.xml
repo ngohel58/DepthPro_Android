@@ -9,6 +9,7 @@
     <!-- Labels -->
     <string name="original_image">Original Image</string>
     <string name="depth_map">Depth Map</string>
+    <string name="chromo_image">Chromo Effect</string>
     <string name="results">Results</string>
 
     <!-- Status messages -->
@@ -94,5 +95,20 @@
     <string name="toast_depth_map_generated">Depth map generated!</string>
     <string name="toast_image_saved">Image saved to gallery</string>
     <string name="toast_processing_started">Processing started...</string>
+    <!-- Download buttons -->
+    <string name="download_depth_map">Download Depth Map</string>
+    <string name="download_effect">Download Effect</string>
+
+    <!-- Controls -->
+    <string name="controls">Controls</string>
+    <string name="threshold">Threshold</string>
+    <string name="depth_scale">Depth Scale</string>
+    <string name="feather">Feather</string>
+    <string name="red_brightness">Red Brightness</string>
+    <string name="blue_brightness">Blue Brightness</string>
+    <string name="gamma">Gamma</string>
+    <string name="black_level">Black Level</string>
+    <string name="white_level">White Level</string>
+    <string name="smoothing">Smoothing</string>
 
 </resources>
