@@ -3,6 +3,7 @@ package com.depthpro.android;
 import android.Manifest;
 import android.app.Activity;
 import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -25,8 +26,11 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.bumptech.glide.Glide;
+import com.google.android.material.slider.Slider;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.io.InputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,20 +44,41 @@ public class MainActivity extends AppCompatActivity {
     // UI Components
     private ImageView originalImageView;
     private ImageView depthMapImageView;
+    private ImageView chromoImageView;
     private Button selectImageButton;
     private Button captureImageButton;
     private Button processButton;
+    private Button downloadDepthButton;
+    private Button downloadEffectButton;
     private ProgressBar progressBar;
     private TextView statusText;
     private TextView processingTimeText;
 
     // Core Components - Updated to use DepthAnythingV2
     private DepthAnythingV2Processor depthProcessor;
+    private ChromostereopsisProcessor chromoProcessor;
     private ExecutorService executorService;
 
     // Current image
     private Bitmap currentBitmap;
+    private Bitmap depthMapBitmap;
+    private Bitmap chromoBitmap;
+    private float[][] currentDepthMap;
     private Uri currentImageUri;
+
+    // Effect parameters
+    private ChromostereopsisProcessor.EffectParams effectParams = new ChromostereopsisProcessor.EffectParams();
+
+    // Sliders
+    private Slider thresholdSlider;
+    private Slider depthScaleSlider;
+    private Slider featherSlider;
+    private Slider redSlider;
+    private Slider blueSlider;
+    private Slider gammaSlider;
+    private Slider blackSlider;
+    private Slider whiteSlider;
+    private Slider smoothingSlider;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,20 +94,86 @@ public class MainActivity extends AppCompatActivity {
     private void initializeViews() {
         originalImageView = findViewById(R.id.originalImageView);
         depthMapImageView = findViewById(R.id.depthMapImageView);
+        chromoImageView = findViewById(R.id.chromoImageView);
         selectImageButton = findViewById(R.id.selectImageButton);
         captureImageButton = findViewById(R.id.captureImageButton);
         processButton = findViewById(R.id.processButton);
+        downloadDepthButton = findViewById(R.id.downloadDepthButton);
+        downloadEffectButton = findViewById(R.id.downloadEffectButton);
         progressBar = findViewById(R.id.progressBar);
         statusText = findViewById(R.id.statusText);
         processingTimeText = findViewById(R.id.processingTimeText);
+
+        thresholdSlider = findViewById(R.id.thresholdSlider);
+        depthScaleSlider = findViewById(R.id.depthScaleSlider);
+        featherSlider = findViewById(R.id.featherSlider);
+        redSlider = findViewById(R.id.redSlider);
+        blueSlider = findViewById(R.id.blueSlider);
+        gammaSlider = findViewById(R.id.gammaSlider);
+        blackSlider = findViewById(R.id.blackSlider);
+        whiteSlider = findViewById(R.id.whiteSlider);
+        smoothingSlider = findViewById(R.id.smoothingSlider);
 
         // Set click listeners
         selectImageButton.setOnClickListener(v -> selectImage());
         captureImageButton.setOnClickListener(v -> captureImage());
         processButton.setOnClickListener(v -> processCurrentImage());
+        downloadDepthButton.setOnClickListener(v -> {
+            if (depthMapBitmap != null) {
+                saveBitmapToGallery(depthMapBitmap, "depth_map");
+            }
+        });
+        downloadEffectButton.setOnClickListener(v -> {
+            if (chromoBitmap != null) {
+                saveBitmapToGallery(chromoBitmap, "chromo_effect");
+            }
+        });
 
         // Initially disable process button
         processButton.setEnabled(false);
+        downloadDepthButton.setEnabled(false);
+        downloadEffectButton.setEnabled(false);
+
+        setupSliders();
+    }
+
+    private void setupSliders() {
+        thresholdSlider.addOnChangeListener((slider, value, fromUser) -> {
+            effectParams.threshold = value;
+            updateEffect();
+        });
+        depthScaleSlider.addOnChangeListener((slider, value, fromUser) -> {
+            effectParams.depthScale = value;
+            updateEffect();
+        });
+        featherSlider.addOnChangeListener((slider, value, fromUser) -> {
+            effectParams.feather = value;
+            updateEffect();
+        });
+        redSlider.addOnChangeListener((slider, value, fromUser) -> {
+            effectParams.redBrightness = value;
+            updateEffect();
+        });
+        blueSlider.addOnChangeListener((slider, value, fromUser) -> {
+            effectParams.blueBrightness = value;
+            updateEffect();
+        });
+        gammaSlider.addOnChangeListener((slider, value, fromUser) -> {
+            effectParams.gamma = value;
+            updateEffect();
+        });
+        blackSlider.addOnChangeListener((slider, value, fromUser) -> {
+            effectParams.blackLevel = value;
+            updateEffect();
+        });
+        whiteSlider.addOnChangeListener((slider, value, fromUser) -> {
+            effectParams.whiteLevel = value;
+            updateEffect();
+        });
+        smoothingSlider.addOnChangeListener((slider, value, fromUser) -> {
+            effectParams.smoothing = value;
+            updateEffect();
+        });
     }
 
     private void initializeComponents() {
@@ -97,6 +188,8 @@ public class MainActivity extends AppCompatActivity {
             updateStatus("Failed to load Depth Anything V2 model: " + e.getMessage());
             Toast.makeText(this, "Failed to initialize model", Toast.LENGTH_LONG).show();
         }
+
+        chromoProcessor = new ChromostereopsisProcessor();
     }
 
     private void checkPermissions() {
@@ -222,6 +315,12 @@ public class MainActivity extends AppCompatActivity {
 
         // Clear previous depth map
         depthMapImageView.setImageBitmap(null);
+        chromoImageView.setImageBitmap(null);
+        depthMapBitmap = null;
+        chromoBitmap = null;
+        currentDepthMap = null;
+        downloadDepthButton.setEnabled(false);
+        downloadEffectButton.setEnabled(false);
 
         // Enable process button
         processButton.setEnabled(true);
@@ -274,10 +373,17 @@ public class MainActivity extends AppCompatActivity {
     private void displayResults(DepthAnythingV2Processor.DepthResult result, long processingTime) {
         // Display depth map
         if (result.depthMapBitmap != null) {
+            depthMapBitmap = result.depthMapBitmap;
             Glide.with(this)
-                    .load(result.depthMapBitmap)
+                    .load(depthMapBitmap)
                     .into(depthMapImageView);
         }
+
+        currentDepthMap = result.depthMap;
+        updateEffect();
+
+        downloadDepthButton.setEnabled(true);
+        downloadEffectButton.setEnabled(true);
 
         // Display processing time (no focal length for Depth Anything V2)
         processingTimeText.setText(String.format("Processing Time: %d ms", processingTime));
@@ -285,6 +391,38 @@ public class MainActivity extends AppCompatActivity {
         updateStatus("Processing completed successfully");
 
         Toast.makeText(this, "Depth map generated!", Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateEffect() {
+        if (currentBitmap == null || currentDepthMap == null) return;
+        executorService.execute(() -> {
+            Bitmap effect = chromoProcessor.applyEffect(currentBitmap, currentDepthMap, effectParams);
+            chromoBitmap = effect;
+            runOnUiThread(() -> {
+                if (effect != null) {
+                    Glide.with(this).load(effect).into(chromoImageView);
+                }
+            });
+        });
+    }
+
+    private void saveBitmapToGallery(Bitmap bitmap, String name) {
+        try {
+            ContentResolver resolver = getContentResolver();
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Images.Media.DISPLAY_NAME, name + ".png");
+            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+            Uri uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (uri != null) {
+                try (OutputStream out = resolver.openOutputStream(uri)) {
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+                    runOnUiThread(() -> Toast.makeText(this, getString(R.string.toast_image_saved), Toast.LENGTH_SHORT).show());
+                }
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Save failed", e);
+            runOnUiThread(() -> Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show());
+        }
     }
 
     private void updateStatus(String message) {
