@@ -48,11 +48,18 @@ public class ChromostereopsisProcessor {
             gray[i] = (float) Math.pow(gray[i], gammaVal);
         }
 
-        // Smooth depth map
-        float[][] smoothed = preprocessDepth(depthMap, (int) (params.smoothing / 10f));
+        // Ensure depth map matches image dimensions
+        float[][] depth = depthMap;
+        int mapH = depth.length;
+        int mapW = depth[0].length;
+        if (mapW != width || mapH != height) {
+            depth = resizeDepthMap(depth, width, height);
+            mapH = height;
+            mapW = width;
+        }
 
-        int mapH = smoothed.length;
-        int mapW = smoothed[0].length;
+        // Smooth depth map
+        float[][] smoothed = preprocessDepth(depth, (int) (params.smoothing / 10f));
         // Map output pixels to depth-map coordinates. Using (mapW-1)/(width-1)
         // ensures the last image pixel samples the last depth value even when
         // image and depth-map dimensions or aspect ratios differ, avoiding
@@ -91,6 +98,25 @@ public class ChromostereopsisProcessor {
 
         output.setPixels(outPixels, 0, width, 0, 0, width, height);
         return output;
+    }
+
+    private float[][] resizeDepthMap(float[][] src, int targetWidth, int targetHeight) {
+        int srcH = src.length;
+        int srcW = src[0].length;
+        float[][] out = new float[targetHeight][targetWidth];
+
+        float scaleX = targetWidth > 1 ? (float) (srcW - 1) / (targetWidth - 1) : 0f;
+        float scaleY = targetHeight > 1 ? (float) (srcH - 1) / (targetHeight - 1) : 0f;
+
+        for (int y = 0; y < targetHeight; y++) {
+            int sy = Math.min(Math.round(y * scaleY), srcH - 1);
+            for (int x = 0; x < targetWidth; x++) {
+                int sx = Math.min(Math.round(x * scaleX), srcW - 1);
+                out[y][x] = src[sy][sx];
+            }
+        }
+
+        return out;
     }
 
     private float[][] preprocessDepth(float[][] depth, int radius) {

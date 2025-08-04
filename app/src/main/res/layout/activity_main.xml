@@ -154,7 +154,7 @@
         <androidx.cardview.widget.CardView
             android:id="@+id/depthMapCard"
             android:layout_width="match_parent"
-            android:layout_height="300dp"
+            android:layout_height="400dp"
             android:layout_marginTop="24dp"
             app:cardCornerRadius="12dp"
             app:cardElevation="4dp"
@@ -196,7 +196,7 @@
         <androidx.cardview.widget.CardView
             android:id="@+id/chromoCard"
             android:layout_width="match_parent"
-            android:layout_height="300dp"
+            android:layout_height="400dp"
             android:layout_marginTop="24dp"
             app:cardCornerRadius="12dp"
             app:cardElevation="4dp"

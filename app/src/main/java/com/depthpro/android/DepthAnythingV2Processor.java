@@ -168,8 +168,15 @@ public class DepthAnythingV2Processor {
         // Process depth map
         float[][] depthMap = extractDepthMap(depthTensor);
 
-        // Generate depth map bitmap
-        Bitmap depthMapBitmap = depthMapRenderer.renderDepthMap(depthMap, inputBitmap.getWidth(), inputBitmap.getHeight());
+        // Resize depth map to match original image dimensions
+        float[][] resizedDepth = resizeDepthMap(depthMap, inputBitmap.getWidth(), inputBitmap.getHeight());
+
+        // Generate grayscale depth map bitmap where far = white, near = black
+        Bitmap depthMapBitmap = depthMapRenderer.renderDepthMap(
+                resizedDepth,
+                inputBitmap.getWidth(),
+                inputBitmap.getHeight(),
+                DepthMapRenderer.ColorMap.GRAYSCALE);
 
         // Cleanup
         inputTensor.close();
@@ -177,7 +184,7 @@ public class DepthAnythingV2Processor {
 
         Log.d(TAG, "Depth estimation completed");
 
-        return new DepthResult(depthMapBitmap, depthMap);
+        return new DepthResult(depthMapBitmap, resizedDepth);
     }
 
     private float[][][] preprocessImageForDepthAnything(Bitmap bitmap) {
@@ -255,20 +262,38 @@ public class DepthAnythingV2Processor {
 
         Log.d(TAG, String.format("Depth range: %.3f - %.3f", minDepth, maxDepth));
 
-        // Normalize to [0, 1] range and invert for visualization
+        // Normalize to [0, 1] range where far = 1 (white) and near = 0 (black)
         float range = maxDepth - minDepth;
         if (range > 0) {
             for (int h = 0; h < depthMap.length; h++) {
                 for (int w = 0; w < depthMap[h].length; w++) {
                     if (!Float.isInfinite(depthMap[h][w]) && !Float.isNaN(depthMap[h][w])) {
-                        // Invert: closer objects appear brighter
-                        depthMap[h][w] = 1.0f - ((depthMap[h][w] - minDepth) / range);
+                        depthMap[h][w] = (depthMap[h][w] - minDepth) / range;
                     } else {
                         depthMap[h][w] = 0.0f;
                     }
                 }
             }
         }
+    }
+
+    private float[][] resizeDepthMap(float[][] src, int targetWidth, int targetHeight) {
+        int srcH = src.length;
+        int srcW = src[0].length;
+        float[][] out = new float[targetHeight][targetWidth];
+
+        float scaleX = targetWidth > 1 ? (float) (srcW - 1) / (targetWidth - 1) : 0f;
+        float scaleY = targetHeight > 1 ? (float) (srcH - 1) / (targetHeight - 1) : 0f;
+
+        for (int y = 0; y < targetHeight; y++) {
+            int sy = Math.min(Math.round(y * scaleY), srcH - 1);
+            for (int x = 0; x < targetWidth; x++) {
+                int sx = Math.min(Math.round(x * scaleX), srcW - 1);
+                out[y][x] = src[sy][sx];
+            }
+        }
+
+        return out;
     }
 
     public void cleanup() {
